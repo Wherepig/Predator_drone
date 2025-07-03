@@ -1,110 +1,98 @@
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+// Setup scene
+const scene = new THREE.Scene();
 
-// World state
-const world = { x: 0, y: 0 }; // Camera top-left in world space
-const speed = 5; // Drone speed
-const crosshair = { x: canvas.width / 2, y: canvas.height / 2 };
+// Setup camera with a perspective view
+const camera = new THREE.PerspectiveCamera(
+  75, window.innerWidth / window.innerHeight, 0.1, 1000
+);
+camera.position.set(0, 30, -50);
+camera.lookAt(0, 0, 0);
 
-// Dummy enemies
-const enemies = [];
-for (let i = 0; i < 10; i++) {
-  enemies.push({
-    x: Math.random() * 3000 - 1500,
-    y: Math.random() * 3000 - 1500,
-    alive: true,
-  });
+
+//testing
+const testBox = new THREE.Mesh(
+  new THREE.BoxGeometry(10, 10, 10),
+  new THREE.MeshLambertMaterial({ color: 0xff0000 })
+);
+testBox.position.set(0, 0, 0);
+scene.add(testBox);
+
+
+
+
+
+
+// Renderer
+const renderer = new THREE.WebGLRenderer({antialias: true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// Lights
+const light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(50, 100, -50).normalize();
+scene.add(light);
+scene.add(new THREE.AmbientLight(0x444444));
+
+// Ground (city surface)
+const groundGeo = new THREE.PlaneGeometry(500, 500, 1, 1);
+const groundMat = new THREE.MeshLambertMaterial({color: 0x444444});
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI/2;
+scene.add(ground);
+
+// Create random buildings
+for (let i = 0; i < 100; i++) {
+  const w = Math.random() * 5 + 5;
+  const h = Math.random() * 20 + 10;
+  const d = Math.random() * 5 + 5;
+  const boxGeo = new THREE.BoxGeometry(w, h, d);
+  const boxMat = new THREE.MeshLambertMaterial({color: 0x888888});
+  const box = new THREE.Mesh(boxGeo, boxMat);
+  box.position.set(
+    (Math.random() - 0.5) * 400,
+    h / 2,
+    (Math.random() - 0.5) * 400
+  );
+  scene.add(box);
 }
 
-// Input state
+// Create the predator drone (simple box placeholder)
+const droneGeo = new THREE.BoxGeometry(4, 1, 6);
+const droneMat = new THREE.MeshLambertMaterial({color: 0xffffff});
+const drone = new THREE.Mesh(droneGeo, droneMat);
+scene.add(drone);
+
+// Input handling
 const keys = {};
 window.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
 window.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
 window.addEventListener("resize", () => {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-  crosshair.x = canvas.width / 2;
-  crosshair.y = canvas.height / 2;
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// Mouse click for missile strike
-canvas.addEventListener("click", () => {
-  const lockedEnemy = getLockedEnemy();
-  if (lockedEnemy) {
-    lockedEnemy.alive = false;
-    // Missile strike animation placeholder
-    ctx.fillStyle = "yellow";
-    ctx.beginPath();
-    ctx.arc(crosshair.x, crosshair.y, 30, 0, Math.PI * 2);
-    ctx.fill();
-  }
-});
-
+// Drone movement state
+const droneSpeed = 1;
 function update() {
-  // Drone (camera) movement
-  if (keys["w"]) world.y -= speed;
-  if (keys["s"]) world.y += speed;
-  if (keys["a"]) world.x -= speed;
-  if (keys["d"]) world.x += speed;
+  if (keys["w"]) drone.position.z += droneSpeed;
+  if (keys["s"]) drone.position.z -= droneSpeed;
+  if (keys["a"]) drone.position.x += droneSpeed;
+  if (keys["d"]) drone.position.x -= droneSpeed;
 
-  // Move enemies (patrol simulation)
-  enemies.forEach(enemy => {
-    if (enemy.alive) enemy.x += Math.sin(Date.now() * 0.001 + enemy.y) * 0.5;
-  });
+  // Update camera to follow drone from behind
+  camera.position.set(
+    drone.position.x,
+    drone.position.y + 30,
+    drone.position.z - 50
+  );
+  camera.lookAt(drone.position);
 }
 
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Draw "urban terrain" as gray blocks (background grid)
-  for (let i = -5000; i < 5000; i += 200) {
-    for (let j = -5000; j < 5000; j += 200) {
-      const screenX = i - world.x + canvas.width / 2;
-      const screenY = j - world.y + canvas.height / 2;
-      ctx.fillStyle = "#444";
-      ctx.fillRect(screenX, screenY, 180, 180);
-    }
-  }
-
-  // Draw enemies
-  enemies.forEach(enemy => {
-    if (!enemy.alive) return;
-    const screenX = enemy.x - world.x + canvas.width / 2;
-    const screenY = enemy.y - world.y + canvas.height / 2;
-    ctx.fillStyle = getLockedEnemy() === enemy ? "red" : "white";
-    ctx.fillRect(screenX - 10, screenY - 10, 20, 20);
-  });
-
-  // Draw crosshair
-  ctx.strokeStyle = "lime";
-  ctx.beginPath();
-  ctx.moveTo(crosshair.x - 15, crosshair.y);
-  ctx.lineTo(crosshair.x + 15, crosshair.y);
-  ctx.moveTo(crosshair.x, crosshair.y - 15);
-  ctx.lineTo(crosshair.x, crosshair.y + 15);
-  ctx.stroke();
-}
-
-function getLockedEnemy() {
-  // Lock enemies within a small radius of crosshair center
-  const lockRadius = 40;
-  for (const enemy of enemies) {
-    if (!enemy.alive) continue;
-    const dx = enemy.x - world.x - 0 + canvas.width / 2;
-    const dy = enemy.y - world.y - 0 + canvas.height / 2;
-    if (Math.abs(dx - canvas.width/2) < lockRadius &&
-        Math.abs(dy - canvas.height/2) < lockRadius) {
-      return enemy;
-    }
-  }
-  return null;
-}
-
-function gameLoop() {
+// Render loop
+function animate() {
   update();
-  draw();
-  requestAnimationFrame(gameLoop);
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
 }
-gameLoop();
+animate();
