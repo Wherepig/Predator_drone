@@ -8,6 +8,18 @@ let roll = 0;  // declare at the top of your file
 //stars
 let skyDome; // Make this global if needed
 
+//Bird's view:
+const normalFOV = 75;
+const zoomedFOV = 25;
+let targetFOV = normalFOV;
+const mouse = new THREE.Vector2();
+const raycaster = new THREE.Raycaster();
+let zoomLookTarget = null; // Target point in 3D
+let driftTimer = 0;
+let zoomMode = false;
+
+
+
 
 
 // Setup scene
@@ -169,13 +181,14 @@ function createFlyingWingDrone() {
 
 
   // Set initial position in the air
-  droneGroup.position.set(0, 40, 0);
+  droneGroup.position.set(0, 50, 0);
   droneGroup.castShadow = true;
 
   return droneGroup;
 }
 
 const drone = createFlyingWingDrone();
+
 scene.add(drone);
 
 
@@ -228,25 +241,26 @@ const rollSpeed = 0.02;      // how fast to roll in/out
 
 
 function update() {
+  drone.visible = !zoomMode;
   // Constant forward motion
-  drone.translateZ(-droneSpeed); // negative Z is "forward"
-  //drone.position.y = fixedAltitude;
+  if (!zoomMode) {
+    // Forward movement
+    drone.translateZ(-droneSpeed);
 
+    // Turning
+    if (keys["a"]) {
+      drone.rotation.y += turnSpeed;
+      roll = THREE.MathUtils.lerp(roll, maxRoll, 0.1);
+    } else if (keys["d"]) {
+      drone.rotation.y -= turnSpeed;
+      roll = THREE.MathUtils.lerp(roll, -maxRoll, 0.1);
+    } else {
+      roll = THREE.MathUtils.lerp(roll, 0, 0.1);
+    }
 
-  // Rotate left/right (yaw) with A/D
-  // Turn left/right
-  if (keys["a"]) {
-    drone.rotation.y += turnSpeed;
-    roll = THREE.MathUtils.lerp(roll, maxRoll, 0.1);
-  } else if (keys["d"]) {
-    drone.rotation.y -= turnSpeed;
-    roll = THREE.MathUtils.lerp(roll, -maxRoll, 0.1);
-  } else {
-    // Smoothly return to level when not turning
-    roll = THREE.MathUtils.lerp(roll, 0, 0.1);
+    drone.rotation.z = roll;
   }
 
-  drone.rotation.z = roll;
   // Optional: Strafe left/right with Q/E
   //if (keys["q"]) drone.translateX(-strafeSpeed); // left
   //if (keys["e"]) drone.translateX(strafeSpeed);  // right
@@ -295,8 +309,117 @@ function update() {
   }
 
 
+  // Smooth zoom transition
+  camera.fov += (targetFOV - camera.fov) * 0.1; // 0.1 is interpolation speed
+  camera.updateProjectionMatrix();
+    if (zoomLookTarget) {
+    const currentLook = new THREE.Vector3();
+    camera.getWorldDirection(currentLook);
+
+    const desiredDir = zoomLookTarget.clone().sub(camera.position).normalize();
+    currentLook.lerp(desiredDir, 0.1); // Smoothly blend toward target
+
+    const newLookAt = camera.position.clone().add(currentLook);
+    if (zoomLookTarget) {
+  // Smooth look at target
+  const currentLook = new THREE.Vector3();
+  camera.getWorldDirection(currentLook);
+
+  const desiredDir = zoomLookTarget.clone().sub(camera.position).normalize();
+  currentLook.lerp(desiredDir, 0.1);
+
+  // Optional drift while zoomed
+  driftTimer += 0.01; // Speed of drift
+
+  const driftX = Math.sin(driftTimer) * 0.5;
+  const driftY = Math.sin(driftTimer * 0.7) * 0.3;
+
+  currentLook.x += driftX * 0.001;
+  currentLook.y += driftY * 0.001;
+
+  // Only while zoomed in and focusing
+if (zoomLookTarget) {
+  // Smooth look direction
+  const currentLook = new THREE.Vector3();
+  camera.getWorldDirection(currentLook);
+
+  const desiredDir = zoomLookTarget.clone().sub(camera.position).normalize();
+  currentLook.lerp(desiredDir, 0.1);
+
+  // Mouse-based pivot adjustment
+  const maxYaw = 2.0;   // horizontal camera pivot range (radians)
+  const maxPitch = 1.0; // vertical camera pivot range (radians)
+
+  const yawOffset = mouse.x * maxYaw;
+  const pitchOffset = mouse.y * maxPitch;
+
+  // Create rotation matrix from yaw and pitch
+  const pivotEuler = new THREE.Euler(pitchOffset, yawOffset, 0, 'YXZ');
+  currentLook.applyEuler(pivotEuler);
+
+  // Optional drift
+  driftTimer += 0.01;
+  const driftX = Math.sin(driftTimer) * 0.5;
+  const driftY = Math.sin(driftTimer * 0.7) * 0.3;
+  currentLook.x += driftX * 0.001;
+  currentLook.y += driftY * 0.001;
+
+  const newLookAt = camera.position.clone().add(currentLook);
+  camera.lookAt(newLookAt);
+} else {
+  camera.lookAt(drone.position);
+}
+
+} else {
+  camera.lookAt(drone.position);
+}
+;
+  } else {
+    camera.lookAt(drone.position); // default tracking
+  }
+
 
 }
+
+//birds view commands
+window.addEventListener('mousedown', (e) => {
+  if (e.button === 2) {
+    targetFOV = zoomedFOV;
+    zoomMode = true; // <<< Add this line here
+
+    // Raycast from camera through mouse to world
+    raycaster.setFromCamera(mouse, camera);
+    
+    const intersects = raycaster.intersectObjects(scene.children, true);
+    if (intersects.length > 0) {
+      zoomLookTarget = intersects[0].point;
+    } else {
+      zoomLookTarget = null;
+    }
+  }
+});
+
+
+window.addEventListener('mouseup', (e) => {
+  if (e.button === 2) {
+    zoomMode = false;
+    targetFOV = normalFOV;
+    zoomLookTarget = null;
+  }
+});
+
+
+window.addEventListener('mousemove', (event) => {
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+});
+
+
+// Prevent right-click context menu
+window.addEventListener('contextmenu', e => e.preventDefault());
+
+
+
 
 
 // Render loop
