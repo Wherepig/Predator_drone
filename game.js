@@ -52,6 +52,29 @@ const testBox = new THREE.Mesh(
 testBox.position.set(0, 0, 0);
 scene.add(testBox);*/
 
+//=====================crosshair to see camera direction
+// Create crosshair
+const crosshair = document.createElement('div');
+crosshair.style.position = 'absolute';
+crosshair.style.top = '50%';
+crosshair.style.left = '50%';
+crosshair.style.width = '25px';
+crosshair.style.height = '25px';
+crosshair.style.marginLeft = '-5px';
+crosshair.style.marginTop = '-5px';
+crosshair.style.border = '2px solid red';
+crosshair.style.borderRadius = '50%';
+crosshair.style.pointerEvents = 'none';
+crosshair.style.zIndex = '999';
+crosshair.style.display = 'none'; // Start hidden
+
+document.body.appendChild(crosshair);
+
+//Hover enemies feature:
+let hoveredEnemies = new Set();
+let scannedEnemies = new Set();
+
+
 
 
 
@@ -238,19 +261,14 @@ function createFlyingWingDrone() {
   tail_r.castShadow = true;
   droneGroup.add(tail_r);
 
-
-
-
-
-
-
-
   // Set initial position in the air
   droneGroup.position.set(0, 50, 0);
   droneGroup.castShadow = true;
 
   return droneGroup;
 }
+
+
 
 const drone = createFlyingWingDrone();
 
@@ -294,11 +312,15 @@ function generateChunk(chunkX, chunkZ) {
     buildings.push(box);
 
 
-    const isNearDrone = Math.abs(chunkX) <= 3 && Math.abs(chunkZ) <= 3;
+    const isNearDrone = Math.abs(chunkX) <= 2 && Math.abs(chunkZ) <= 2;
 
     if (!hasPickedTarget && isNearDrone) {
       targetBuilding = box;
       hasPickedTarget = true;
+
+      //============================================transparency
+      box.material.transparent = true;
+      box.material.opacity = 1.0; // fully visible by default
 
       box.material.color.set(0xff2222); // red tint
       box.userData.isTarget = true;
@@ -327,7 +349,7 @@ function generateChunk(chunkX, chunkZ) {
       });
       const ring = new THREE.Mesh(ringGeo, ringMat);
       ring.rotation.x = -Math.PI / 2; // flat on top
-      ring.position.set(bx, bh + 2, bz); // above the building
+      ring.position.set(bx, bh + 50, bz); // above the building
       ring.renderOrder = 1;
 
       scene.add(ring);
@@ -342,6 +364,82 @@ function generateChunk(chunkX, chunkZ) {
   generatedChunks.set(key, buildings);
   
 }
+
+//pick a new building after scanning a new one
+function pickNewTargetBuilding() {
+  hasPickedTarget = false;
+  targetBuilding = null;
+  targetEnemies = [];
+  scannedEnemies.clear();
+  enemiesFound = false;
+  targetMarker && scene.remove(targetMarker);
+  targetMarker = null;
+
+  // Search through visible chunks and find a new random building
+  const allBuildings = [];
+
+  for (const buildings of generatedChunks.values()) {
+    allBuildings.push(...buildings);
+  }
+
+  const candidates = allBuildings.filter(b => !b.userData.isTarget); // skip old target
+  if (candidates.length === 0) return;
+
+  const newTarget = candidates[Math.floor(Math.random() * candidates.length)];
+ 
+
+  
+  //targetBuildingarget.material.transparent = true;  // enable transparency
+  //targetBuildingarget.material.opacity = 1.0;       // fully visible initially  
+
+  
+  
+  newTarget.userData.isTarget = true;
+  newTarget.material.color.set(0xff2222); // red
+  targetBuilding = newTarget;
+  hasPickedTarget = true;
+  targetBuilding.material = targetBuilding.material.clone();
+  targetBuilding.material.transparent = true;
+  targetBuilding.material.opacity = 1.0;
+  targetBuilding.material.depthWrite = false;
+  targetBuilding.renderOrder = 999;
+ 
+
+
+
+
+  // Spawn new enemies
+  const { x: bx, y: by, z: bz } = newTarget.position;
+  const { width: bw, height: bh, depth: bd } = newTarget.geometry.parameters;
+
+  for (let j = 0; j < 3; j++) {
+    const enemy = new THREE.Mesh(
+      new THREE.SphereGeometry(0.5, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffff00 })
+    );
+    const ex = (Math.random() - 0.5) * bw * 0.8;
+    const ey = Math.random() * bh;
+    const ez = (Math.random() - 0.5) * bd * 0.8;
+    enemy.position.set(bx + ex, ey, bz + ez);
+    enemy.userData.isEnemy = true;
+    scene.add(enemy);
+    targetEnemies.push(enemy);
+  }
+
+  // Add new marker
+  const ringGeo = new THREE.RingGeometry(2, 3, 32);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: 0xff0000,
+    side: THREE.DoubleSide
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(bx, by + bh / 2 + 2, bz);
+  ring.renderOrder = 1;
+  scene.add(ring);
+  targetMarker = ring;
+}
+
 
 
 
@@ -433,7 +531,7 @@ function update() {
   // Smooth zoom transition
   camera.fov += (targetFOV - camera.fov) * 0.1; // 0.1 is interpolation speed
   camera.updateProjectionMatrix();
-if (zoomLookTarget) {
+  if (zoomLookTarget) {
     const currentLook = new THREE.Vector3();
     camera.getWorldDirection(currentLook);
 
@@ -441,65 +539,66 @@ if (zoomLookTarget) {
     currentLook.lerp(desiredDir, 0.1); // Smoothly blend toward target
 
     const newLookAt = camera.position.clone().add(currentLook);
-  if (zoomLookTarget) {
-      // Smooth look at target
-      const currentLook = new THREE.Vector3();
-      camera.getWorldDirection(currentLook);
+      if (zoomLookTarget) {
+          // Smooth look at target
+          const currentLook = new THREE.Vector3();
+          camera.getWorldDirection(currentLook);
 
-      const desiredDir = zoomLookTarget.clone().sub(camera.position).normalize();
-      currentLook.lerp(desiredDir, 0.1);
+          const desiredDir = zoomLookTarget.clone().sub(camera.position).normalize();
+          currentLook.lerp(desiredDir, 0.1);
 
-      // Optional drift while zoomed
-      driftTimer += 0.01; // Speed of drift
+          // Optional drift while zoomed
+          driftTimer += 0.01; // Speed of drift
 
-      const driftX = Math.sin(driftTimer) * 0.5;
-      const driftY = Math.sin(driftTimer * 0.7) * 0.3;
+          const driftX = Math.sin(driftTimer) * 0.5;
+          const driftY = Math.sin(driftTimer * 0.7) * 0.3;
 
-      currentLook.x += driftX * 0.001;
-      currentLook.y += driftY * 0.001;
+          currentLook.x += driftX * 0.001;
+          currentLook.y += driftY * 0.001;
 
-      // Only while zoomed in and focusing
-    if (zoomLookTarget) {
-      // Smooth look direction
-      const currentLook = new THREE.Vector3();
-      camera.getWorldDirection(currentLook);
+          // Only while zoomed in and focusing
+          if (zoomLookTarget) {
+            // Smooth look direction
+            const currentLook = new THREE.Vector3();
+            camera.getWorldDirection(currentLook);
 
-      const desiredDir = zoomLookTarget.clone().sub(camera.position).normalize();
-      currentLook.lerp(desiredDir, 0.1);
+            const desiredDir = zoomLookTarget.clone().sub(camera.position).normalize();
+            currentLook.lerp(desiredDir, 0.1);
 
-      // Mouse-based pivot adjustment
-      const maxYaw = 2.0;   // horizontal camera pivot range (radians)
-      const maxPitch = 1.5; // vertical camera pivot range (radians)
+            // Mouse-based pivot adjustment
+            const maxYaw = 2.0;   // horizontal camera pivot range (radians)
+            const maxPitch = 1.5; // vertical camera pivot range (radians)
 
-      const yawOffset = mouse.x * maxYaw;
-      const pitchOffset = mouse.y * maxPitch;
+            const yawOffset = mouse.x * maxYaw;
+            const pitchOffset = mouse.y * maxPitch;
 
-      // Create rotation matrix from yaw and pitch
-      const pivotEuler = new THREE.Euler(pitchOffset, yawOffset, 0, 'YXZ');
-      currentLook.applyEuler(pivotEuler);
+            // Create rotation matrix from yaw and pitch
+            const pivotEuler = new THREE.Euler(pitchOffset, yawOffset, 0, 'YXZ');
+            currentLook.applyEuler(pivotEuler);
 
-      // Optional drift
-      driftTimer += 0.01;
-      const driftX = Math.sin(driftTimer) * 0.5;
-      const driftY = Math.sin(driftTimer * 0.7) * 0.3;
-      currentLook.x += driftX * 0.001;
-      currentLook.y += driftY * 0.001;
+            // Optional drift
+            driftTimer += 0.01;
+            const driftX = Math.sin(driftTimer) * 0.5;
+            const driftY = Math.sin(driftTimer * 0.7) * 0.3;
+            currentLook.x += driftX * 0.001;
+            currentLook.y += driftY * 0.001;
 
-      const newLookAt = camera.position.clone().add(currentLook);
-      camera.lookAt(newLookAt);
-    } 
+            const newLookAt = camera.position.clone().add(currentLook);
+            camera.lookAt(newLookAt);
+          } 
 
 
-    else {
-        camera.lookAt(drone.position);
-    }
-  };
+          else {
+              camera.lookAt(drone.position);
+            }
+        };
 
   }
   
-    if (targetBuilding && !enemiesFound) {
+  if (targetBuilding && !enemiesFound) {
     const targetPos = targetBuilding.position.clone();
     const distance = camera.position.distanceTo(targetPos);
+    
 
     const dirToTarget = targetPos.clone().sub(camera.position).normalize();
     const camDir = new THREE.Vector3();
@@ -510,8 +609,8 @@ if (zoomLookTarget) {
     const lookingAt = angle < 0.3;
 
     if (closeEnough && lookingAt) {
-      inspectionProgress += 0.02; // build up progress while looking
-      if (inspectionProgress >= 1.0) {
+      //inspectionProgress += 0.02; // build up progress while looking
+      //if (inspectionProgress >= 1.0) {
         enemiesFound = true;
         targetBuilding.material.color.set(0x22ff22); // green tint
         targetEnemies.forEach(e => scene.remove(e));
@@ -522,9 +621,9 @@ if (zoomLookTarget) {
           }
 
       }
-    } else {
-      inspectionProgress = Math.max(inspectionProgress - 0.01, 0); // decay if not looking
-    }
+    //} else {
+    //  inspectionProgress = Math.max(inspectionProgress - 0.01, 0); // decay if not looking
+    //}
   }
 
   if (targetMarker && targetBuilding) {
@@ -545,7 +644,64 @@ if (zoomLookTarget) {
       }
 
     targetMarker.rotation.z = time * 0.5;
+  }
+
+  if (targetBuilding) {
+    if (zoomMode && targetEnemies.length > 0 && !enemiesFound) {
+      // Fade building to transparent
+      targetBuilding.material.opacity = THREE.MathUtils.lerp(targetBuilding.material.opacity, 0.2, 0.1);
+      //newTarget.material.opacity = THREE.MathUtils.lerp(targetBuilding.material.opacity, 0.2, 0.1);
+
+      // 👇 Angle-based enemy detection
+      const cameraDirection = new THREE.Vector3();
+      camera.getWorldDirection(cameraDirection);
+
+      targetEnemies.forEach(enemy => {
+        if (!scannedEnemies.has(enemy)) {
+          const toEnemy = enemy.position.clone().sub(camera.position);
+          const distance = toEnemy.length(); // how far away the enemy is
+          const maxScanDistance = 200; //scan range 
+          const directionToEnemy = toEnemy.normalize();
+
+          const angle = cameraDirection.angleTo(directionToEnemy);
+
+          // Dynamic cone angle: tighter at distance, wider up close
+          const maxAngle = THREE.MathUtils.clamp(0.3 - distance * 0.002, 0.005, 0.3); 
+          // e.g. 0.3 radians (~17°) at point blank, 0.02 (~1.1°) when far
+
+          if (angle < 0.02 && distance < maxScanDistance) {
+            scannedEnemies.add(enemy);
+            enemy.material.color.set(0x00ff00);
+          }
+        }
+      });
+
+      // 👇 Check if all are scanned
+      if (scannedEnemies.size === targetEnemies.length) {
+        enemiesFound = true;
+        targetBuilding.material.color.set(0x22ff22); // turn building green
+        targetEnemies.forEach(e => scene.remove(e));
+        targetEnemies = [];
+        scannedEnemies.clear();
+
+          // 🔁 Pick a new target after a short delay
+          setTimeout(() => {
+            pickNewTargetBuilding();
+          }, 1000); // 1 second delay
+      }
+    } else {
+      // Fade building back in
+      targetBuilding.material.opacity = THREE.MathUtils.lerp(targetBuilding.material.opacity, 1.0, 0.1);
     }
+  }
+
+
+  //For the crosshair visiblity
+  if (crosshair) {
+  crosshair.style.display = zoomMode ? 'block' : 'none';
+  }
+
+
 
 
   else {
