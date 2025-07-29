@@ -1,3 +1,9 @@
+//Throttle
+let currentThrottle = 0.5;
+const maxThrottle = 1.5;       // Max speed multiplier
+const throttleStep = 0.01;     // How fast it ramps up/down
+
+
 //enemy building
 let targetBuilding = null;
 let hasPickedTarget = false;
@@ -445,7 +451,7 @@ function pickNewTargetBuilding() {
 
 
 // Drone movement state
-const droneSpeed = 0.5;
+const droneSpeed = 1.5;
 const turnSpeed = 0.02;
 const strafeSpeed = 0.2;
 const maxRoll = Math.PI / 8; // limit tilt angle (~22.5°)
@@ -473,7 +479,8 @@ function update() {
     } else if (keys["d"]) {
       drone.rotation.y -= turnSpeed;
       roll = THREE.MathUtils.lerp(roll, -maxRoll, 0.1);
-    } else {
+    } 
+    else {
       roll = THREE.MathUtils.lerp(roll, 0, 0.1);
     }
 
@@ -647,6 +654,40 @@ function update() {
   }
 
   if (targetBuilding) {
+      // Get direction the drone is facing 
+      // 
+      /**/
+      const droneDirection = new THREE.Vector3(0, 0, -1); // default forward
+      droneDirection.applyQuaternion(drone.quaternion);   // transform to world space
+
+      // Direction to target
+      const toTarget = targetBuilding.position.clone().sub(drone.position);
+      toTarget.y = 0; // flatten to horizontal plane
+      droneDirection.y = 0;
+      toTarget.normalize();
+      droneDirection.normalize();
+
+      // Compute signed angle (between -PI and PI)
+      let angle = Math.atan2(
+        droneDirection.x * toTarget.z - droneDirection.z * toTarget.x,
+        droneDirection.x * toTarget.x + droneDirection.z * toTarget.z
+      );
+
+      // Clamp to compass bounds
+      const maxAngle = Math.PI / 2;
+      let offsetRatio = angle / maxAngle;
+      offsetRatio = Math.max(-1, Math.min(1, offsetRatio));
+
+      // Move UI marker
+      const compassWidth = 300;
+      const maxOffset = compassWidth / 2;
+      const pixelOffset = offsetRatio * maxOffset;
+
+      const marker = document.getElementById("target-indicator");
+      marker.style.left = `${150 + pixelOffset}px`;
+
+
+
     if (zoomMode && targetEnemies.length > 0 && !enemiesFound) {
       // Fade building to transparent
       targetBuilding.material.opacity = THREE.MathUtils.lerp(targetBuilding.material.opacity, 0.2, 0.1);
