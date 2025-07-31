@@ -1,3 +1,6 @@
+//kill counter
+let kill_count = 0;
+
 //Throttle
 let currentThrottle = 0.5;
 const maxThrottle = 1.5;       // Max speed multiplier
@@ -460,6 +463,12 @@ const rollSpeed = 0.02;      // how fast to roll in/out
 
 
 function update() {
+  //show kills
+  //const marks = document.getElementById("kills");
+  //marks.style.left = `${kill_count}px`;
+
+
+
   // Inside your update() function:
   light.position.copy(drone.position).add(new THREE.Vector3(300, 500, -300));
   light.target.position.copy(drone.position);
@@ -623,6 +632,7 @@ function update() {
         targetEnemies.forEach(e => scene.remove(e));
         targetEnemies = [];
         if (targetMarker) {
+            
             scene.remove(targetMarker);
             targetMarker = null;
           }
@@ -724,6 +734,14 @@ function update() {
         targetEnemies.forEach(e => scene.remove(e));
         targetEnemies = [];
         scannedEnemies.clear();
+        kill_count = kill_count + 1;
+        
+        const display = document.getElementById("killCountDisplay");
+        if (display) {
+          display.textContent = `Recon Targets: ${kill_count}`;
+        }
+
+
 
           // 🔁 Pick a new target after a short delay
           setTimeout(() => {

@@ -60,3 +60,33 @@
   transform: translateX(-50%);
 }
 
+/**/
+#kills-bar {
+  
+  top: 20px;
+  left: 68%;
+  width: 300px;
+  height: 40px;
+  margin-left: -150px; 
+  background: rgba(0, 0, 0, 0.5);
+  border: 2px solid white;
+  border-radius: 8px;
+  z-index: 10;
+  overflow: hidden;
+
+  color:lime;
+  
+  position: absolute;
+  font-size:20px; 
+  font-family:sans-serif;
+  z-index:10;
+  text-align: center;
+  
+}
+
+#killCountDisplay{
+  top: -40px;
+  transform: translate(0%, 48%);
+}
+
+
